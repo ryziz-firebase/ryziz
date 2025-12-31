@@ -6,6 +6,6 @@
         "create-react": "./create.js"
     },
     "dependencies": {
-        "@ryziz/flow": "^0.0.16"
+        "@ryziz/flow": "^0.0.17"
     }
 }
