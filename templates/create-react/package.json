@@ -1,0 +1,10 @@
+{
+    "name": "@ryziz/create-react",
+    "version": "0.0.11",
+    "bin": {
+        "create-react": "./node_modules/@ryziz/cli/create.js"
+    },
+    "dependencies": {
+        "@ryziz/cli": "^0.0.14"
+    }
+}
