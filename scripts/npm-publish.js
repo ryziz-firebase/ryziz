@@ -15,7 +15,7 @@ task('Publish Packages', {
     list.forEach((p) => {
       const { name, version } = JSON.parse(readFileSync(join(p, 'package.json')));
       console.log(`${name}@${version}`);
-      try { execSync('npm publish --access public', { cwd: p, stdio: 'ignore' }); } catch (e) { }
+      try { execSync('npm publish --access public', { cwd: p }); } catch (e) { }
     });
   },
 });

@@ -17,7 +17,7 @@ task('Pre-commit Hook', {
     const targets = staged.filter((f) => /\.(js|jsx)$/.test(f));
     if (!targets.length) skip('No JS files');
     console.log(`Fixing ${targets.length} files`);
-    execSync(`npx eslint --fix ${targets.join(' ')}`, { stdio: 'inherit' });
+    execSync(`npx eslint --fix ${targets.join(' ')}`);
     execSync(`git add ${targets.join(' ')}`);
   },
   'Bumping': (c) => {
