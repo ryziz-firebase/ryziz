@@ -20,26 +20,41 @@ task('Pre-commit Hook', {
     execSync(`npx eslint --fix ${targets.join(' ')}`);
     execSync(`git add ${targets.join(' ')}`);
   },
-  'Bumping': (c) => {
-    if (!c.staged.length) c.skip('No changes');
-    c.pkgs = ['packages', 'templates'].flatMap((d) => readdirSync(d).map((s) => join(d, s))).filter((d) => statSync(d).isDirectory());
-    c.bumped = c.pkgs.filter((p) => c.staged.some((f) => f.startsWith(p.replace(/\\/g, '/') + '/')))
-      .reduce((acc, p) => {
-        const path = join(p, 'package.json'), pkg = JSON.parse(readFileSync(path));
-        pkg.version = pkg.version.replace(/\d+$/, (v) => +v + 1);
-        writeFileSync(path, JSON.stringify(pkg, null, 4) + '\n');
-        execSync(`git add ${path}`) || console.log(`${pkg.name} -> ${pkg.version}`);
-        return (acc[pkg.name] = `^${pkg.version}`, acc);
-      }, {});
-    if (!Object.keys(c.bumped).length) c.skip('No package changes');
-  },
-  'Syncing': ({ pkgs, bumped, skip }) => {
-    if (!Object.keys(bumped).length) skip('Up to date');
-    pkgs.forEach((p) => {
-      const path = join(p, 'package.json'), txt = readFileSync(path, 'utf8');
-      const nTxt = Object.entries(bumped).reduce((acc, [n, v]) => acc.replace(new RegExp(`"${n}": ".*?"`, 'g'), `"${n}": "${v}"`), txt);
-      if (txt !== nTxt) writeFileSync(path, nTxt) || execSync(`git add ${path}`);
+  'Sorting': ({ staged }) => {
+    const keys = [
+      'name', 'version', 'private', 'description', 'license', 'author', // Identity
+      'type', 'engines', 'packageManager', // Env
+      'main', 'module', 'types', 'exports', 'bin', 'files', 'sideEffects', // Entries
+      'scripts', // Runtime
+      'peerDependencies', 'dependencies', 'optionalDependencies', // Deps
+      'devDependencies', 'workspaces', 'eslintConfig', // Dev
+      'repository', 'bugs', 'homepage', 'keywords', // Meta
+    ];
+    staged.filter((f) => f.endsWith('package.json')).forEach((f) => {
+      const txt = readFileSync(f, 'utf8'), j = JSON.parse(txt);
+      const sorted = keys.filter((k) => k in j).concat(Object.keys(j).filter((k) => !keys.includes(k))).reduce((a, k) => (a[k] = j[k], a), {});
+      writeFileSync(f, JSON.stringify(sorted, null, 2) + '\n');
+      execSync(`git add ${f}`);
     });
-    try { execSync('git add package-lock.json'); } catch (e) { }
+  },
+  'Bumping': ({ staged, skip }) => {
+    if (!staged.length) skip('No changes');
+    const pkgs = ['packages', 'templates'].flatMap((d) => readdirSync(d).map((s) => join(d, s))).filter((d) => statSync(d).isDirectory());
+    const pkgMap = pkgs.reduce((a, p) => (a[JSON.parse(readFileSync(join(p, 'package.json'))).name] = p, a), {});
+    const bump = (name) => {
+      const p = join(pkgMap[name], 'package.json'), pkg = JSON.parse(readFileSync(p, 'utf8'));
+      pkg.version = pkg.version.replace(/\d+$/, (v) => +v + 1);
+      writeFileSync(p, JSON.stringify(pkg, null, 4) + '\n');
+      execSync(`git add ${p}`) || console.log(`${pkg.name} -> ${pkg.version}`);
+      Object.keys(pkgMap).forEach((N) => { // Check dependents
+        const path = join(pkgMap[N], 'package.json'), txt = readFileSync(path, 'utf8');
+        if (txt.includes(`"${name}":`)) {
+          const nTxt = txt.replace(new RegExp(`"${name}": ".*?"`), `"${name}": "^${pkg.version}"`);
+          if (txt !== nTxt) writeFileSync(path, nTxt) || execSync(`git add ${path}`) || bump(N);
+        }
+      });
+    };
+    pkgs.filter((p) => staged.some((f) => f.startsWith(p.replace(/\\/g, '/') + '/')))
+      .map((p) => JSON.parse(readFileSync(join(p, 'package.json'))).name).forEach(bump);
   },
 });

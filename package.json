@@ -1,8 +1,5 @@
 {
   "private": true,
-  "workspaces": [
-    "packages/*"
-  ],
   "type": "module",
   "scripts": {
     "postinstall": "node scripts/pre-commit.js install",
@@ -10,5 +7,8 @@
   },
   "devDependencies": {
     "eslint": "^8.57.1"
-  }
+  },
+  "workspaces": [
+    "packages/*"
+  ]
 }
