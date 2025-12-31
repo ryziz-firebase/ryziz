@@ -37,24 +37,45 @@ task('Pre-commit Hook', {
       execSync(`git add ${f}`);
     });
   },
-  'Bumping': ({ staged, skip }) => {
-    if (!staged.length) skip('No changes');
-    const pkgs = ['packages', 'templates'].flatMap((d) => readdirSync(d).map((s) => join(d, s))).filter((d) => statSync(d).isDirectory());
-    const pkgMap = pkgs.reduce((a, p) => (a[JSON.parse(readFileSync(join(p, 'package.json'))).name] = p, a), {});
-    const bump = (name) => {
-      const p = join(pkgMap[name], 'package.json'), pkg = JSON.parse(readFileSync(p, 'utf8'));
-      pkg.version = pkg.version.replace(/\d+$/, (v) => +v + 1);
-      writeFileSync(p, JSON.stringify(pkg, null, 4) + '\n');
-      execSync(`git add ${p}`) || console.log(`${pkg.name} -> ${pkg.version}`);
-      Object.keys(pkgMap).forEach((N) => { // Check dependents
-        const path = join(pkgMap[N], 'package.json'), txt = readFileSync(path, 'utf8');
-        if (txt.includes(`"${name}":`)) {
-          const nTxt = txt.replace(new RegExp(`"${name}": ".*?"`), `"${name}": "^${pkg.version}"`);
-          if (txt !== nTxt) writeFileSync(path, nTxt) || execSync(`git add ${path}`) || bump(N);
+  'Indexing': (c) => {
+    if (!c.staged.length) c.skip('No changes');
+    c.pkgs = ['packages', 'templates']
+      .flatMap((d) => readdirSync(d).map((s) => join(d, s))).filter((d) => statSync(d).isDirectory())
+      .map((p) => ({ path: join(p, 'package.json'), pkg: JSON.parse(readFileSync(join(p, 'package.json'), 'utf8')) }));
+    c.versions = c.pkgs.reduce((a, { pkg }) => (a[pkg.name] = pkg.version, a), {});
+    c.dirty = new Set(c.pkgs.filter(({ path }) => c.staged.some((f) => f.startsWith(path.replace('/package.json', '')))).map((p) => p.pkg.name));
+    if (!c.dirty.size) c.skip('No package changes');
+  },
+  'Bumping': (c) => {
+    if (!c.dirty || !c.dirty.size) c.skip('Skipped');
+    c.bumped = new Set();
+    for (let loop = 0, stable = false; !stable;) {
+      if (++loop > 100) throw Error('Circular dependency detected');
+      stable = true;
+      c.pkgs.forEach((p) => {
+        ['dependencies', 'devDependencies', 'peerDependencies'].forEach((t) => {
+          if (!p.pkg[t]) return;
+          Object.keys(p.pkg[t]).forEach((d) => {
+            if (c.versions[d] && p.pkg[t][d] !== `^${c.versions[d]}`) {
+              p.pkg[t][d] = `^${c.versions[d]}`;
+              c.dirty.add(p.pkg.name);
+            }
+          });
+        });
+        if (c.dirty.has(p.pkg.name) && !c.bumped.has(p.pkg.name)) {
+          p.pkg.version = c.versions[p.pkg.name] = p.pkg.version.replace(/\d+$/, (v) => +v + 1);
+          c.bumped.add(p.pkg.name);
+          stable = false;
+          console.log(`${p.pkg.name} -> ${p.pkg.version}`);
         }
       });
-    };
-    pkgs.filter((p) => staged.some((f) => f.startsWith(p.replace(/\\/g, '/') + '/')))
-      .map((p) => JSON.parse(readFileSync(join(p, 'package.json'))).name).forEach(bump);
+    }
+  },
+  'Syncing': ({ pkgs, bumped, skip }) => {
+    if (!bumped || !bumped.size) skip('Up to date');
+    pkgs.filter((p) => bumped.has(p.pkg.name)).forEach(({ path, pkg }) => {
+      writeFileSync(path, JSON.stringify(pkg, null, 4) + '\n');
+      execSync(`git add ${path}`);
+    });
   },
 });

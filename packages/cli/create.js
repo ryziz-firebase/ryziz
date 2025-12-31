@@ -11,7 +11,7 @@ task('Initialize Project', {
     if (!c.src) throw Error(`Template ${name} not found`);
   },
   'Verifying': (c) => {
-    if (!process.argv[2]) throw Error('Usage: create-app <dir>');
+    if (!process.argv[2]) throw Error('Project name/directory is missing');
     if (exists(c.dest = resolve(process.argv[2]))) throw Error('Directory exists');
   },
   'Cloning': ({ src, dest }) => {

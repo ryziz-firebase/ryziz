@@ -1,6 +1,6 @@
 {
     "name": "@ryziz/cli",
-    "version": "0.0.28",
+    "version": "0.0.36",
     "type": "module",
     "bin": {
         "create-react": "./create.js"
