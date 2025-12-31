@@ -1,8 +1,8 @@
 {
     "name": "@ryziz/cli",
-    "version": "0.0.14",
+    "version": "0.0.17",
     "type": "module",
     "dependencies": {
-        "@ryziz/flow": "^0.0.12"
+        "@ryziz/flow": "^0.0.16"
     }
 }

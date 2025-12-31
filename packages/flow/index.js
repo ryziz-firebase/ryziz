@@ -21,7 +21,7 @@ export async function task(name, steps) {
       if (!broken) process.stdout.write('\n');
       if (res.skip) console.log(`  -> SKIP${res.skip.trim() ? ': ' + res.skip : ''} ${t}`);
       else {
-        const s = ((res.err.stderr?.toString() || res.err.stdout?.toString() || res.err.stack || res.err.message).trim() || (res.err.stack || res.err.message).toString().trim()).split('\n');
+        const s = (res.err.stack || res.err.message).split('\n');
         s[0] = s[0].replace(/^(.*?)(:)/, (m) => m.toUpperCase()) + ` ${t}`;
         console.error(`  -> ${s.join('\n     ')}`);
         err = res.err;
