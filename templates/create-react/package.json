@@ -1,8 +1,8 @@
 {
     "name": "@ryziz/create-react",
-    "version": "0.0.35",
+    "version": "0.0.36",
     "bin": "create-react",
     "dependencies": {
-        "@ryziz/cli": "^0.0.36"
+        "@ryziz/cli": "^0.0.37"
     }
 }

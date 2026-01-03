@@ -2,6 +2,7 @@
 import { existsSync as exists, cpSync, renameSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execSync } from 'node:child_process';
 import { task } from '@ryziz/flow';
 
 task('Initialize Project', {
@@ -24,5 +25,6 @@ task('Initialize Project', {
     if (pkg.dependencies?.['@ryziz/cli']) (pkg.devDependencies ||= {})['@ryziz/cli'] = pkg.dependencies['@ryziz/cli'], delete pkg.dependencies['@ryziz/cli'];
     writeFileSync(p, JSON.stringify(pkg, null, 2));
   },
-  'Ready': ({ dest }) => console.log(`Run: cd ${basename(dest)} && npm install`),
+  'Installing': ({ dest }) => execSync('npm install', { cwd: dest }),
+  'Ready': ({ dest }) => console.log(dest),
 });
