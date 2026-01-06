@@ -60,6 +60,9 @@ export default (isDev) => task('Building', {
     });
 
     await c.functionsBuilder.rebuild();
+    const pkg = createRequire(import.meta.url).resolve('@ryziz/functions/package.json');
+    cpSync(pkg, join(c.dist, 'functions', 'package.json'));
+    cpSync(join(dirname(pkg), 'firebase.json'), join(c.dist, 'firebase.json'));
     if (!isDev) await c.functionsBuilder.dispose();
   },
   'Watching': async (c) => {
