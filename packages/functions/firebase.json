@@ -1,0 +1,28 @@
+{
+  "hosting": {
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "functions"
+    ],
+    "rewrites": []
+  },
+  "functions": {
+    "source": "functions"
+  },
+  "emulators": {
+    "hosting": {
+      "port": 3000
+    },
+    "ui": {
+      "enabled": true,
+      "port": 3001
+    },
+    "functions": {
+      "port": 3002
+    },
+    "firestore": {
+      "port": 3003
+    }
+  }
+}

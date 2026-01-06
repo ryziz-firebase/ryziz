@@ -17,8 +17,8 @@ task('Pre-commit Hook', {
     const targets = staged.filter((f) => /\.(js|jsx)$/.test(f));
     if (!targets.length) skip('No JS files');
     console.log(`Fixing ${targets.length} files`);
-    execSync(`npx eslint --fix ${targets.join(' ')}`);
-    execSync(`git add ${targets.join(' ')}`);
+    execSync(`npx eslint --fix ${targets.map((f) => `'${f}'`).join(' ')}`);
+    execSync(`git add ${targets.map((f) => `'${f}'`).join(' ')}`);
   },
   'Sorting': ({ staged }) => {
     const keys = [
@@ -34,7 +34,7 @@ task('Pre-commit Hook', {
       const txt = readFileSync(f, 'utf8'), j = JSON.parse(txt);
       const sorted = keys.filter((k) => k in j).concat(Object.keys(j).filter((k) => !keys.includes(k))).reduce((a, k) => (a[k] = j[k], a), {});
       writeFileSync(f, JSON.stringify(sorted, null, 2) + '\n');
-      execSync(`git add ${f}`);
+      execSync(`git add '${f}'`);
     });
   },
   'Indexing': (c) => {
@@ -75,7 +75,7 @@ task('Pre-commit Hook', {
     if (!bumped || !bumped.size) skip('Up to date');
     pkgs.filter((p) => bumped.has(p.pkg.name)).forEach(({ path, pkg }) => {
       writeFileSync(path, JSON.stringify(pkg, null, 4) + '\n');
-      execSync(`git add ${path}`);
+      execSync(`git add '${path}'`);
     });
   },
 });

@@ -9,8 +9,9 @@ export default (isDev) => task('Building', {
     c.root = process.cwd(); c.dist = 'dist'; c.public = join(c.root, 'public');
     if (existsSync(c.dist)) rmSync(c.dist, { recursive: true, force: true });
     mkdirSync(c.dist, { recursive: true });
+    mkdirSync(join(c.dist, 'functions'), { recursive: true });
   },
-  'Setup': async (c) => {
+  'Hosting': async (c) => {
     const getRoutes = () => {
       const src = resolve(c.root, 'src'), files = existsSync(src) ? readdirSync(src).filter((f) => /^pages\..+\.jsx$/.test(f)) : [];
       const imports = files.map((file, index) => `import R${index} from './src/${file}';`).join('\n');
@@ -18,11 +19,11 @@ export default (isDev) => task('Building', {
       return { contents: `import React from 'react';\n${imports}\nexport default [${exports}];`, loader: 'jsx', resolveDir: c.root, watchDirs: [src] };
     };
 
-    c.builder = await context({
+    c.hostingBuilder = await context({
       entryPoints: { index: join(dirname(createRequire(import.meta.url).resolve('@ryziz/router/package.json')), 'entry.jsx') },
       bundle: true, splitting: true, format: 'esm', outdir: join(c.dist, 'assets'), loader: { '.js': 'jsx' }, jsx: 'automatic', nodePaths: [join(c.root, 'node_modules')],
       plugins: [
-        { name: 'log', setup: (b) => b.onEnd(() => { c.onBuilt?.(); }) },
+        { name: 'log', setup: (b) => b.onEnd(() => { c.onHostingBuilt?.(); }) },
         { name: 'vr', setup: (b) => { b.onResolve({ filter: /^virtual:routes$/ }, (a) => ({ path: a.path, namespace: 'vr' })); b.onLoad({ filter: /.*/, namespace: 'vr' }, getRoutes); } },
       ],
       alias: {
@@ -31,17 +32,44 @@ export default (isDev) => task('Building', {
         'react-router': join(c.root, 'node_modules/react-router'),
       },
     });
-  },
-  'Building': async (c) => {
-    await c.builder.rebuild();
+
+    await c.hostingBuilder.rebuild();
     if (existsSync(c.public)) cpSync(c.public, c.dist, { recursive: true });
-    if (!isDev) await c.builder.dispose();
+    if (!isDev) await c.hostingBuilder.dispose();
+  },
+  'Functions': async (c) => {
+    const getApiRoutes = () => {
+      const src = resolve(c.root, 'src'), files = existsSync(src) ? readdirSync(src).filter((f) => /^api\..+\.js$/.test(f)) : [];
+      const imports = files.map((file, index) => `import handler${index} from './src/${file}';`).join('\n');
+      const routes = files.map((file, index) => {
+        const path = ('/' + file.slice(4, -3)).replace(/^\/index$/, '/').replace(/\./g, '/').replace(/\$/g, ':');
+        const functionName = file.slice(0, -3).replace(/\./g, '-').replace(/\$/g, '');
+        return `{path:'${path}',handler:handler${index},functionName:'${functionName}'}`;
+      }).join(',');
+      return { contents: `${imports}\nexport default [${routes}];`, loader: 'js', resolveDir: c.root, watchDirs: [src] };
+    };
+
+    c.functionsBuilder = await context({
+      entryPoints: { index: join(dirname(createRequire(import.meta.url).resolve('@ryziz/functions/package.json')), 'entry.js') },
+      bundle: true, format: 'cjs', platform: 'node', outfile: join(c.dist, 'functions', 'index.js'), minify: !isDev,
+      external: ['firebase-admin', 'firebase-functions', 'express'],
+      plugins: [
+        { name: 'log', setup: (b) => b.onEnd(() => { c.onFunctionsBuilt?.(); }) },
+        { name: 'var', setup: (b) => { b.onResolve({ filter: /^virtual:api-routes$/ }, (a) => ({ path: a.path, namespace: 'var' })); b.onLoad({ filter: /.*/, namespace: 'var' }, getApiRoutes); } },
+      ],
+    });
+
+    await c.functionsBuilder.rebuild();
+    if (!isDev) await c.functionsBuilder.dispose();
   },
   'Watching': async (c) => {
     if (!isDev) c.skip();
-    let isFirst = true; c.onBuilt = () => isFirst ? (isFirst = false) : console.log('Client build updated');
+    let isFirstHosting = true, isFirstFunctions = true;
+    c.onHostingBuilt = () => isFirstHosting ? (isFirstHosting = false) : console.log('Hosting build updated');
+    c.onFunctionsBuilt = () => isFirstFunctions ? (isFirstFunctions = false) : console.log('Functions build updated');
     if (existsSync(c.public)) watch(c.public, { recursive: true }, () => { console.log('Public assets updated'); cpSync(c.public, c.dist, { recursive: true }); });
-    await c.builder.watch();
+    await c.hostingBuilder.watch();
+    await c.functionsBuilder.watch();
     await new Promise(() => { });
   },
 });
