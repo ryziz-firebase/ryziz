@@ -48,10 +48,18 @@ export default (isDev) => task('Building', {
         const hasConfig = /export\s+(const|let|var)\s+config\s*=/.test(content);
         return {
           file,
-          path: ('/api' + file.slice(3, -3)).replace(/^\/api\/index$/, '/api/').replace(/\./g, '/').replace(/\$/g, ':'),
+          path: ('/api/' + file.slice(4, -3)).replace(/^\/api\/index$/, '/api/').replace(/\./g, '/').replace(/\$/g, ':'),
           functionName: file.slice(0, -3).replace(/\./g, '-').replace(/\$/g, ''),
           hasConfig,
         };
+      }).sort((a, b) => {
+        const aDepth = a.path.split('/').length;
+        const bDepth = b.path.split('/').length;
+        const aHasParam = a.path.includes(':');
+        const bHasParam = b.path.includes(':');
+        if (aDepth !== bDepth) return bDepth - aDepth;
+        if (aHasParam !== bHasParam) return aHasParam ? 1 : -1;
+        return a.path.localeCompare(b.path);
       });
     };
 
