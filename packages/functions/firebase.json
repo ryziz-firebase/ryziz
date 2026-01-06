@@ -11,6 +11,9 @@
   "functions": {
     "source": "functions"
   },
+  "firestore": {
+    "rules": "firestore.rules"
+  },
   "emulators": {
     "hosting": {
       "port": 3000

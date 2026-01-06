@@ -63,6 +63,7 @@ export default (isDev) => task('Building', {
 
     await c.functionsBuilder.rebuild();
     cpSync(join(c.functionsPkg, 'package.json'), join(c.dist, 'functions', 'package.json'));
+    cpSync(join(c.functionsPkg, 'firestore.rules'), join(c.dist, 'firestore.rules'));
     if (!isDev) await c.functionsBuilder.dispose();
   },
   'Watching': async (c) => {
