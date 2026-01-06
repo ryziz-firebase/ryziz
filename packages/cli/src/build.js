@@ -42,26 +42,26 @@ export default (isDev) => task('Building', {
   },
   'Functions': async (c) => {
     const scanApiRoutes = () => {
+      const getSortScore = (path) => {
+        const depth = path.split('/').length;
+        const hasParam = path.includes(':') ? 0 : 1;
+        const isCatchAll = path.endsWith('/') ? 0 : 1;
+        return (depth << 16) | (hasParam << 8) | isCatchAll;
+      };
+
       const files = existsSync(c.src) ? readdirSync(c.src).filter((f) => /^api\..+\.js$/.test(f)) : [];
       return files.map((file) => {
         const content = readFileSync(join(c.src, file), 'utf8');
-        const hasConfig = /export\s+(const|let|var)\s+config\s*=/.test(content);
+        const path = ('/api/' + file.slice(4, -3)).replace(/^\/api\/index$/, '/api/').replace(/\./g, '/').replace(/\$/g, ':');
         return {
           file,
-          path: ('/api/' + file.slice(4, -3)).replace(/^\/api\/index$/, '/api/').replace(/\./g, '/').replace(/\$/g, ':'),
+          path,
           functionName: file.slice(0, -3).replace(/\./g, '-').replace(/\$/g, ''),
-          hasConfig,
+          hasConfig: /export\s+(const|let|var)\s+config\s*=/.test(content),
+          _score: getSortScore(path),
         };
       }).sort((a, b) => {
-        const aDepth = a.path.split('/').length;
-        const bDepth = b.path.split('/').length;
-        const aHasParam = a.path.includes(':');
-        const bHasParam = b.path.includes(':');
-        const aIsCatchAll = a.path.endsWith('/');
-        const bIsCatchAll = b.path.endsWith('/');
-        if (aDepth !== bDepth) return bDepth - aDepth;
-        if (aHasParam !== bHasParam) return aHasParam ? 1 : -1;
-        if (aIsCatchAll !== bIsCatchAll) return aIsCatchAll ? 1 : -1;
+        if (a._score !== b._score) return b._score - a._score;
         return a.path.localeCompare(b.path);
       });
     };
