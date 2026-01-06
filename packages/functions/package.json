@@ -1,6 +1,9 @@
 {
     "name": "@ryziz/functions",
-    "version": "0.0.4",
+    "version": "0.0.6",
+    "engines": {
+        "node": "22"
+    },
     "main": "./index.js",
     "dependencies": {
         "express": "^5.2.1",

@@ -1,5 +1,5 @@
 import { context } from 'esbuild';
-import { existsSync, readdirSync, mkdirSync, cpSync, watch, rmSync } from 'node:fs';
+import { existsSync, readdirSync, mkdirSync, cpSync, watch, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { createRequire } from 'node:module';
 import { task } from '@ryziz/flow';
@@ -44,9 +44,9 @@ export default (isDev) => task('Building', {
       const routes = files.map((file, index) => {
         const path = ('/' + file.slice(4, -3)).replace(/^\/index$/, '/').replace(/\./g, '/').replace(/\$/g, ':');
         const functionName = file.slice(0, -3).replace(/\./g, '-').replace(/\$/g, '');
-        return `{path:'${path}',handler:handler${index},functionName:'${functionName}'}`;
-      }).join(',');
-      return { contents: `${imports}\nmodule.exports = [${routes}];`, loader: 'js', resolveDir: c.root, watchDirs: [src] };
+        return { path, functionName, entry: `{path:'${path}',handler:handler${index},functionName:'${functionName}'}` };
+      });
+      return { contents: `${imports}\nmodule.exports = [${routes.map((r) => r.entry).join(',')}];`, loader: 'js', resolveDir: c.root, watchDirs: [src], routes };
     };
 
     c.functionsBuilder = await context({
@@ -56,13 +56,12 @@ export default (isDev) => task('Building', {
       plugins: [
         { name: 'log', setup: (b) => b.onEnd(() => { c.onFunctionsBuilt?.(); }) },
         { name: 'var', setup: (b) => { b.onResolve({ filter: /^virtual:api-routes$/ }, (a) => ({ path: a.path, namespace: 'var' })); b.onLoad({ filter: /.*/, namespace: 'var' }, getApiRoutes); } },
+        { name: 'fb', setup: (b) => b.onEnd(() => { const cfg = JSON.parse(readFileSync(join(dirname(createRequire(import.meta.url).resolve('@ryziz/functions/package.json')), 'firebase.json'))); writeFileSync(join(c.dist, 'firebase.json'), JSON.stringify({ ...cfg, hosting: { ...cfg.hosting, rewrites: [...getApiRoutes().routes.map((r) => ({ source: r.path, function: r.functionName })), { source: '**', destination: '/index.html' }] } }, null, 2)); }) },
       ],
     });
 
     await c.functionsBuilder.rebuild();
-    const pkg = createRequire(import.meta.url).resolve('@ryziz/functions/package.json');
-    cpSync(pkg, join(c.dist, 'functions', 'package.json'));
-    cpSync(join(dirname(pkg), 'firebase.json'), join(c.dist, 'firebase.json'));
+    cpSync(createRequire(import.meta.url).resolve('@ryziz/functions/package.json'), join(c.dist, 'functions', 'package.json'));
     if (!isDev) await c.functionsBuilder.dispose();
   },
   'Watching': async (c) => {
