@@ -5,7 +5,4 @@ initializeApp();
 
 exports.db = getFirestore();
 
-exports.withExpress = (handler, config) => {
-  if (config) handler.__config = config;
-  return handler;
-};
+exports.withExpress = (handler) => handler;

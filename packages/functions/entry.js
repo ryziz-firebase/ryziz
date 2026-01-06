@@ -12,13 +12,13 @@ const createApp = (routes) => {
   return app;
 };
 
-const standalone = apiRoutes.filter((r) => r.handler.__config);
-const merged = apiRoutes.filter((r) => !r.handler.__config);
+const standalone = apiRoutes.filter((r) => r.config);
+const merged = apiRoutes.filter((r) => !r.config);
 
 if (merged.length > 0) {
   exports.api = onRequest({ memory: '256MiB' }, createApp(merged));
 }
 
 standalone.forEach((route) => {
-  exports[route.functionName] = onRequest(route.handler.__config, createApp([route]));
+  exports[route.functionName] = onRequest(route.config, createApp([route]));
 });

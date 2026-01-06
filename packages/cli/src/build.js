@@ -43,11 +43,16 @@ export default (isDev) => task('Building', {
   'Functions': async (c) => {
     const scanApiRoutes = () => {
       const files = existsSync(c.src) ? readdirSync(c.src).filter((f) => /^api\..+\.js$/.test(f)) : [];
-      return files.map((file) => ({
-        file,
-        path: ('/' + file.slice(4, -3)).replace(/^\/index$/, '/').replace(/\./g, '/').replace(/\$/g, ':'),
-        functionName: file.slice(0, -3).replace(/\./g, '-').replace(/\$/g, ''),
-      }));
+      return files.map((file) => {
+        const content = readFileSync(join(c.src, file), 'utf8');
+        const hasConfig = /export\s+(const|let|var)\s+config\s*=/.test(content);
+        return {
+          file,
+          path: ('/api' + file.slice(3, -3)).replace(/^\/api\/index$/, '/api/').replace(/\./g, '/').replace(/\$/g, ':'),
+          functionName: file.slice(0, -3).replace(/\./g, '-').replace(/\$/g, ''),
+          hasConfig,
+        };
+      });
     };
 
     c.functionsBuilder = await context({
@@ -56,8 +61,8 @@ export default (isDev) => task('Building', {
       external: ['firebase-admin', 'firebase-functions', 'express'],
       plugins: [
         { name: 'log', setup: (b) => b.onEnd(() => { c.onFunctionsBuilt?.(); }) },
-        { name: 'var', setup: (b) => { b.onResolve({ filter: /^virtual:api-routes$/ }, (a) => ({ path: a.path, namespace: 'var' })); b.onLoad({ filter: /.*/, namespace: 'var' }, () => { const routes = scanApiRoutes(); const requires = routes.map((r, i) => `const handler${i} = require('./src/${r.file}');`).join('\n'); const entries = routes.map((r, i) => `{path:'${r.path}',handler:handler${i}.default || handler${i},functionName:'${r.functionName}'}`).join(','); return { contents: `${requires}\nmodule.exports = [${entries}];`, loader: 'js', resolveDir: c.root, watchDirs: [c.src] }; }); } },
-        { name: 'fb', setup: (b) => b.onEnd(() => { const routes = scanApiRoutes(); const cfg = JSON.parse(readFileSync(join(c.functionsPkg, 'firebase.json'))); writeFileSync(join(c.dist, 'firebase.json'), JSON.stringify({ ...cfg, hosting: { ...cfg.hosting, rewrites: [...routes.map((r) => ({ source: r.path, function: r.functionName })), { source: '**', destination: '/index.html' }] } }, null, 2)); }) },
+        { name: 'var', setup: (b) => { b.onResolve({ filter: /^virtual:api-routes$/ }, (a) => ({ path: a.path, namespace: 'var' })); b.onLoad({ filter: /.*/, namespace: 'var' }, () => { const routes = scanApiRoutes(); const requires = routes.map((r, i) => `const module${i} = require('./src/${r.file}');`).join('\n'); const entries = routes.map((r, i) => `{path:'${r.path}',handler:module${i}.default || module${i},config:module${i}.config,functionName:'${r.functionName}'}`).join(','); return { contents: `${requires}\nmodule.exports = [${entries}];`, loader: 'js', resolveDir: c.root, watchDirs: [c.src] }; }); } },
+        { name: 'fb', setup: (b) => b.onEnd(() => { const routes = scanApiRoutes(); const cfg = JSON.parse(readFileSync(join(c.functionsPkg, 'firebase.json'))); const rewrites = routes.map((r) => ({ source: r.path, function: r.hasConfig ? r.functionName : 'api' })); writeFileSync(join(c.dist, 'firebase.json'), JSON.stringify({ ...cfg, hosting: { ...cfg.hosting, rewrites: [...rewrites, { source: '**', destination: '/index.html' }] } }, null, 2)); }) },
       ],
     });
 
