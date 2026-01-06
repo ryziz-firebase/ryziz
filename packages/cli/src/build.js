@@ -7,20 +7,23 @@ import { task } from '@ryziz/flow';
 export default (isDev) => task('Building', {
   'Preparing': (c) => {
     c.root = process.cwd(); c.dist = 'dist'; c.public = join(c.root, 'public');
+    c.src = resolve(c.root, 'src');
+    c.routerPkg = dirname(createRequire(import.meta.url).resolve('@ryziz/router/package.json'));
+    c.functionsPkg = dirname(createRequire(import.meta.url).resolve('@ryziz/functions/package.json'));
     if (existsSync(c.dist)) rmSync(c.dist, { recursive: true, force: true });
     mkdirSync(c.dist, { recursive: true });
     mkdirSync(join(c.dist, 'functions'), { recursive: true });
   },
   'Hosting': async (c) => {
     const getRoutes = () => {
-      const src = resolve(c.root, 'src'), files = existsSync(src) ? readdirSync(src).filter((f) => /^pages\..+\.jsx$/.test(f)) : [];
+      const files = existsSync(c.src) ? readdirSync(c.src).filter((f) => /^pages\..+\.jsx$/.test(f)) : [];
       const imports = files.map((file, index) => `import R${index} from './src/${file}';`).join('\n');
       const exports = files.map((file, index) => `{path:'${('/' + file.slice(6, -4)).replace(/^\/index$/, '/').replace(/\./g, '/').replace(/\$/g, ':')}',element:<R${index}/>}`).join(',');
-      return { contents: `import React from 'react';\n${imports}\nexport default [${exports}];`, loader: 'jsx', resolveDir: c.root, watchDirs: [src] };
+      return { contents: `import React from 'react';\n${imports}\nexport default [${exports}];`, loader: 'jsx', resolveDir: c.root, watchDirs: [c.src] };
     };
 
     c.hostingBuilder = await context({
-      entryPoints: { index: join(dirname(createRequire(import.meta.url).resolve('@ryziz/router/package.json')), 'entry.jsx') },
+      entryPoints: { index: join(c.routerPkg, 'entry.jsx') },
       bundle: true, splitting: true, format: 'esm', outdir: join(c.dist, 'assets'), loader: { '.js': 'jsx' }, jsx: 'automatic', nodePaths: [join(c.root, 'node_modules')],
       plugins: [
         { name: 'log', setup: (b) => b.onEnd(() => { c.onHostingBuilt?.(); }) },
@@ -38,30 +41,28 @@ export default (isDev) => task('Building', {
     if (!isDev) await c.hostingBuilder.dispose();
   },
   'Functions': async (c) => {
-    const getApiRoutes = () => {
-      const src = resolve(c.root, 'src'), files = existsSync(src) ? readdirSync(src).filter((f) => /^api\..+\.js$/.test(f)) : [];
-      const imports = files.map((file, index) => `import handler${index} from './src/${file}';`).join('\n');
-      const routes = files.map((file, index) => {
-        const path = ('/' + file.slice(4, -3)).replace(/^\/index$/, '/').replace(/\./g, '/').replace(/\$/g, ':');
-        const functionName = file.slice(0, -3).replace(/\./g, '-').replace(/\$/g, '');
-        return { path, functionName, entry: `{path:'${path}',handler:handler${index},functionName:'${functionName}'}` };
-      });
-      return { contents: `${imports}\nmodule.exports = [${routes.map((r) => r.entry).join(',')}];`, loader: 'js', resolveDir: c.root, watchDirs: [src], routes };
+    const scanApiRoutes = () => {
+      const files = existsSync(c.src) ? readdirSync(c.src).filter((f) => /^api\..+\.js$/.test(f)) : [];
+      return files.map((file) => ({
+        file,
+        path: ('/' + file.slice(4, -3)).replace(/^\/index$/, '/').replace(/\./g, '/').replace(/\$/g, ':'),
+        functionName: file.slice(0, -3).replace(/\./g, '-').replace(/\$/g, ''),
+      }));
     };
 
     c.functionsBuilder = await context({
-      entryPoints: { index: join(dirname(createRequire(import.meta.url).resolve('@ryziz/functions/package.json')), 'entry.js') },
+      entryPoints: { index: join(c.functionsPkg, 'entry.js') },
       bundle: true, format: 'cjs', platform: 'node', outfile: join(c.dist, 'functions', 'index.js'), minify: !isDev,
       external: ['firebase-admin', 'firebase-functions', 'express'],
       plugins: [
         { name: 'log', setup: (b) => b.onEnd(() => { c.onFunctionsBuilt?.(); }) },
-        { name: 'var', setup: (b) => { b.onResolve({ filter: /^virtual:api-routes$/ }, (a) => ({ path: a.path, namespace: 'var' })); b.onLoad({ filter: /.*/, namespace: 'var' }, getApiRoutes); } },
-        { name: 'fb', setup: (b) => b.onEnd(() => { const cfg = JSON.parse(readFileSync(join(dirname(createRequire(import.meta.url).resolve('@ryziz/functions/package.json')), 'firebase.json'))); writeFileSync(join(c.dist, 'firebase.json'), JSON.stringify({ ...cfg, hosting: { ...cfg.hosting, rewrites: [...getApiRoutes().routes.map((r) => ({ source: r.path, function: r.functionName })), { source: '**', destination: '/index.html' }] } }, null, 2)); }) },
+        { name: 'var', setup: (b) => { b.onResolve({ filter: /^virtual:api-routes$/ }, (a) => ({ path: a.path, namespace: 'var' })); b.onLoad({ filter: /.*/, namespace: 'var' }, () => { const routes = scanApiRoutes(); const imports = routes.map((r, i) => `import handler${i} from './src/${r.file}';`).join('\n'); const entries = routes.map((r, i) => `{path:'${r.path}',handler:handler${i},functionName:'${r.functionName}'}`).join(','); return { contents: `${imports}\nexport default [${entries}];`, loader: 'js', resolveDir: c.root, watchDirs: [c.src] }; }); } },
+        { name: 'fb', setup: (b) => b.onEnd(() => { const routes = scanApiRoutes(); const cfg = JSON.parse(readFileSync(join(c.functionsPkg, 'firebase.json'))); writeFileSync(join(c.dist, 'firebase.json'), JSON.stringify({ ...cfg, hosting: { ...cfg.hosting, rewrites: [...routes.map((r) => ({ source: r.path, function: r.functionName })), { source: '**', destination: '/index.html' }] } }, null, 2)); }) },
       ],
     });
 
     await c.functionsBuilder.rebuild();
-    cpSync(createRequire(import.meta.url).resolve('@ryziz/functions/package.json'), join(c.dist, 'functions', 'package.json'));
+    cpSync(join(c.functionsPkg, 'package.json'), join(c.dist, 'functions', 'package.json'));
     if (!isDev) await c.functionsBuilder.dispose();
   },
   'Watching': async (c) => {
