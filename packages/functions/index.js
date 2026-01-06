@@ -1,11 +1,11 @@
-import { initializeApp } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+const { initializeApp } = require('firebase-admin/app');
+const { getFirestore } = require('firebase-admin/firestore');
 
 initializeApp();
 
-export const db = getFirestore();
+exports.db = getFirestore();
 
-export const withExpress = (handler, config) => {
+exports.withExpress = (handler, config) => {
   if (config) handler.__config = config;
   return handler;
 };

@@ -1,7 +1,7 @@
-import { onRequest } from 'firebase-functions/v2/https';
-import { initializeApp } from 'firebase-admin/app';
-import express from 'express';
-import apiRoutes from 'virtual:api-routes';
+const { onRequest } = require('firebase-functions/v2/https');
+const { initializeApp } = require('firebase-admin/app');
+const express = require('express');
+const apiRoutes = require('virtual:api-routes');
 
 initializeApp();
 

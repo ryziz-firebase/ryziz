@@ -46,7 +46,7 @@ export default (isDev) => task('Building', {
         const functionName = file.slice(0, -3).replace(/\./g, '-').replace(/\$/g, '');
         return `{path:'${path}',handler:handler${index},functionName:'${functionName}'}`;
       }).join(',');
-      return { contents: `${imports}\nexport default [${routes}];`, loader: 'js', resolveDir: c.root, watchDirs: [src] };
+      return { contents: `${imports}\nmodule.exports = [${routes}];`, loader: 'js', resolveDir: c.root, watchDirs: [src] };
     };
 
     c.functionsBuilder = await context({
