@@ -27,9 +27,7 @@ function verifying() {
 
 function cloning() {
   cpSync(src, dest, { recursive: true });
-  if (exists(join(dest, 'gitignore'))) {
-    renameSync(join(dest, 'gitignore'), join(dest, '.gitignore'));
-  }
+  if (exists(join(dest, 'gitignore'))) renameSync(join(dest, 'gitignore'), join(dest, '.gitignore'));
 }
 
 function configuring() {

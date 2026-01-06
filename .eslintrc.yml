@@ -22,6 +22,6 @@ rules:
   arrow-parens: [error, always]
   eol-last: [error, always]
   no-multiple-empty-lines: [error, { max: 1 }]
-  curly: [error, multi-line]
+  curly: [error, multi]
 
 ignorePatterns: [dist/, node_modules/]

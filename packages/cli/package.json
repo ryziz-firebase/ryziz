@@ -1,6 +1,6 @@
 {
     "name": "@ryziz/cli",
-    "version": "0.0.54",
+    "version": "0.0.59",
     "type": "module",
     "bin": {
         "ryziz": "./index.js",
