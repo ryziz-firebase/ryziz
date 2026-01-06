@@ -1,12 +1,12 @@
 {
     "name": "@ryziz/create-react",
-    "version": "0.0.50",
+    "version": "0.0.51",
     "bin": "create-react",
     "scripts": {
         "dev": "ryziz dev"
     },
     "dependencies": {
-        "@ryziz/cli": "^0.0.51",
+        "@ryziz/cli": "^0.0.52",
         "@ryziz/router": "^0.0.3",
         "react": "^18.3.1"
     }
