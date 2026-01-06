@@ -57,8 +57,11 @@ export default (isDev) => task('Building', {
         const bDepth = b.path.split('/').length;
         const aHasParam = a.path.includes(':');
         const bHasParam = b.path.includes(':');
+        const aIsCatchAll = a.path.endsWith('/');
+        const bIsCatchAll = b.path.endsWith('/');
         if (aDepth !== bDepth) return bDepth - aDepth;
         if (aHasParam !== bHasParam) return aHasParam ? 1 : -1;
+        if (aIsCatchAll !== bIsCatchAll) return aIsCatchAll ? 1 : -1;
         return a.path.localeCompare(b.path);
       });
     };
