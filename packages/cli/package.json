@@ -1,13 +1,13 @@
 {
     "name": "@ryziz/cli",
-    "version": "0.0.52",
+    "version": "0.0.54",
     "type": "module",
     "bin": {
         "ryziz": "./index.js",
         "create-react": "./create.js"
     },
     "dependencies": {
-        "@ryziz/flow": "^0.0.24",
+        "@ryziz/task": "^0.0.3",
         "commander": "^14.0.2",
         "esbuild": "^0.27.2"
     }
