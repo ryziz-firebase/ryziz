@@ -5,47 +5,82 @@ import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 import { f } from '@ryziz/task';
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '../');
-const name = basename(process.argv[1]);
-const dest = process.argv[2] ? resolve(process.argv[2]) : null;
-const src = [resolve(root, name), resolve(root, '../templates', name)]
-  .find((p) => exists(join(p, 'package.json')));
+const ctx = {
+  root: null,
+  name: null,
+  dest: null,
+  src: null,
+};
 
-f('Initializing',
-  f('Verifying', verifying),
-  f('Cloning', cloning),
-  f('Configuring', configuring),
-  f('Installing', installing),
-  f('Completing', completing),
+await f('Preparing',
+  f('Parsing',
+    f('Args', () => ({ name: ctx.name, dest: ctx.dest } = parseArgs())),
+    f('Root', () => ctx.root = resolveRoot()),
+  ),
+  f('Locating', () => ctx.src = findTemplate(ctx.root, ctx.name)),
 )();
 
-function verifying() {
-  if (!src) throw Error(`Template ${name} not found`);
-  if (!dest) throw Error('Project name/directory is missing');
-  if (exists(dest)) throw Error('Directory exists');
+await f('Initializing',
+  f('Cloning', () => clone(ctx.src, ctx.dest)),
+  f('Configuring', () => configure(ctx.dest)),
+  f('Installing', () => install(ctx.dest)),
+  f('Completing', () => complete(ctx.dest)),
+  { skip: getSkipReason(ctx) },
+)();
+
+function parseArgs() {
+  const name = basename(process.argv[1]);
+  const dest = process.argv[2] ? resolve(process.argv[2]) : null;
+  return { name, dest };
 }
 
-function cloning() {
+function resolveRoot() {
+  return resolve(dirname(fileURLToPath(import.meta.url)), '../');
+}
+
+function findTemplate(root, name) {
+  return [resolve(root, name), resolve(root, '../templates', name)]
+    .find((p) => exists(join(p, 'package.json')));
+}
+
+function getSkipReason(ctx) {
+  if (!ctx.src) return `Template ${ctx.name} not found`;
+  if (!ctx.dest) return 'Project name/directory is missing';
+  if (exists(ctx.dest)) return 'Directory exists';
+  return false;
+}
+
+function clone(src, dest) {
   cpSync(src, dest, { recursive: true });
-  if (exists(join(dest, 'gitignore'))) renameSync(join(dest, 'gitignore'), join(dest, '.gitignore'));
+  if (exists(join(dest, 'gitignore'))) 
+    renameSync(join(dest, 'gitignore'), join(dest, '.gitignore'));
+  
 }
 
-function configuring() {
+function configure(dest) {
   const pkgPath = join(dest, 'package.json');
-  const pkg = JSON.parse(readFileSync(pkgPath));
+  const pkg = readJson(pkgPath);
   delete pkg.bin;
   pkg.name = basename(dest);
   if (pkg.dependencies?.['@ryziz/cli']) {
     (pkg.devDependencies ||= {})['@ryziz/cli'] = pkg.dependencies['@ryziz/cli'];
     delete pkg.dependencies['@ryziz/cli'];
   }
-  writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
+  writeJson(pkgPath, pkg);
 }
 
-function installing() {
+function install(dest) {
   execSync('npm install', { cwd: dest });
 }
 
-function completing() {
+function complete(dest) {
   console.log(dest);
+}
+
+function readJson(path) {
+  return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+function writeJson(path, data) {
+  writeFileSync(path, JSON.stringify(data, null, 2) + '\n');
 }

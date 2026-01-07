@@ -1,6 +1,6 @@
 {
-    "name": "@ryziz/task",
-    "version": "0.0.3",
-    "type": "module",
-    "main": "index.js"
+  "name": "@ryziz/task",
+  "version": "0.0.4",
+  "type": "module",
+  "main": "index.js"
 }

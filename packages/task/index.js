@@ -1,9 +1,11 @@
 import { spawn } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { appendFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
-const oldLog = console.log;
+const als = new AsyncLocalStorage(), log = console.log;
+console.log = (...a) => (als.getStore() || log)(...a);
 
 export function f(name, ...args) {
   const opts = typeof args.at(-1) === 'object' && !args.at(-1)?.__isTask ? args.pop() : {};
@@ -14,17 +16,16 @@ export function f(name, ...args) {
     const printer = ctx.printer || ((msg) => process.stdout.write(msg));
 
     if (opts.enabled === false) return;
-    if (opts.skip) return printer(`${indent}${name}... SKIP: ${opts.skip}\n`);
+    const skip = opts.skip || ctx.forceSkip;
+    if (skip) return printer(`${indent}${name}... SKIP: ${skip}\n`);
 
     isLeaf ? printer(`${indent}${name}... `) : printer(`${indent}> ${name}\n`);
 
     const t0 = performance.now();
     let broken = 0;
 
-    // Monkey-patch console.log to handle indentation
-    if (isLeaf) {
-      console.log = (...a) => (broken || (printer('\n'), broken = 1), printer(`${indent}     ${a.join(' ')}\n`));
-    }
+    // Use context logger
+    const logger = (...a) => (broken || (printer('\n'), broken = 1), printer(`${indent}     ${a.join(' ')}\n`));
 
     try {
       const exec = isLeaf
@@ -40,25 +41,33 @@ export function f(name, ...args) {
             const err = results.find((r) => r.status === 'rejected');
             if (err) throw err.reason;
           }
-          : async () => { for (const t of tasks) await t(indent + '  ', { ...ctx, printer }); };
+          : async () => {
+            let err;
+            for (const t of tasks) 
+              if (err) await t(indent + '  ', { ...ctx, printer, forceSkip: 'Cascade' });
+              else try { await t(indent + '  ', { ...ctx, printer }); } catch (e) { err = e; }
+            
+            if (err) throw err;
+          };
 
-      const p = exec();
+      const p = als.run(isLeaf ? logger : null, exec);
+
       opts.timeout
-        ? await Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error(`Timeout ${opts.timeout}ms`)), opts.timeout))])
+        ? await Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error(`Timeout ${opts.timeout}ms`)), opts.timeout).unref())])
         : await p;
 
       if (isLeaf) printer(`${broken ? indent + '  -> ' : ''}OK (${(performance.now() - t0).toFixed(2)}ms)\n`);
     } catch (e) {
-      if (!isLeaf) process.exit(1);
-
-      if (!broken) printer('\n');
-      const [line1, ...rest] = (e.stack || String(e)).split('\n');
-      printer(`${indent}  -> ${line1.toUpperCase()} (${(performance.now() - t0).toFixed(2)}ms)\n`);
-      if (rest.length) printer(`${indent}     ${rest.join('\n' + indent + '     ')}\n`);
+      if (!e?.logged) {
+        if (!broken) printer('\n');
+        const [line1, ...rest] = (e.stack || String(e)).split('\n');
+        printer(`${indent}  -> ${line1.toUpperCase()} (${(performance.now() - t0).toFixed(2)}ms)\n`);
+        if (rest.length) printer(`${indent}     ${rest.join('\n' + indent + '     ')}\n`);
+        if (e && typeof e === 'object') e.logged = true;
+      }
       throw e;
-    } finally {
-      if (isLeaf) console.log = oldLog;
     }
+
   };
 
   taskFn.__isTask = true;
@@ -67,20 +76,24 @@ export function f(name, ...args) {
 
 f.$ = (cmd, args, opts = {}) => async () => {
   const logFile = join(tmpdir(), `spawn-${Date.now()}.txt`);
+  writeFileSync(logFile, '');
   console.log(`Streamed to ${logFile}`);
 
   await new Promise((resolve, reject) => {
     const proc = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd: opts.cwd });
-    let output = '';
+    let resolved = false, buf = ''; // Optimize: Only buffer if checking waitFor
     const handler = (d) => {
-      output += d;
-      if (opts.waitFor?.test(output)) resolve();
+      const s = d.toString();
+      appendFileSync(logFile, s);
+      if (opts.waitFor && !resolved) {
+        buf += s;
+        if (opts.waitFor.test(buf)) { resolved = true; buf = ''; resolve(); }
+      }
     };
     proc.stdout.on('data', handler);
     proc.stderr.on('data', handler);
     proc.on('exit', (code) => {
-      writeFileSync(logFile, output);
-      code === 0 ? resolve() : reject(new Error(`Exit ${code}`));
+      (code === 0 || resolved) ? resolve() : reject(new Error(`Exit ${code}`));
     });
   });
 };

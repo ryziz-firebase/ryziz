@@ -1,14 +1,14 @@
 {
-    "name": "@ryziz/cli",
-    "version": "0.0.59",
-    "type": "module",
-    "bin": {
-        "ryziz": "./index.js",
-        "create-react": "./create.js"
-    },
-    "dependencies": {
-        "@ryziz/task": "^0.0.3",
-        "commander": "^14.0.2",
-        "esbuild": "^0.27.2"
-    }
+  "name": "@ryziz/cli",
+  "version": "0.0.60",
+  "type": "module",
+  "bin": {
+    "ryziz": "./index.js",
+    "create-react": "./create.js"
+  },
+  "dependencies": {
+    "@ryziz/task": "^0.0.4",
+    "commander": "^14.0.2",
+    "esbuild": "^0.27.2"
+  }
 }
