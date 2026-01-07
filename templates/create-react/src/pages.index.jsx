@@ -6,7 +6,6 @@ export default function Index() {
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  
   useEffect(() => {
     Promise.all([
       fetch('/api/').then((r) => r.json()),

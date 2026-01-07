@@ -1,6 +1,6 @@
 {
   "name": "@ryziz/create-react",
-  "version": "0.0.59",
+  "version": "0.0.60",
   "bin": "create-react",
   "scripts": {
     "dev": "ryziz dev"
