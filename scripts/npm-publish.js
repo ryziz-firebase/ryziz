@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, renameSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { join } from 'node:path';
 import { f } from '../packages/task/index.js';
@@ -60,6 +60,8 @@ function filterPublishable(packages, changed) {
 }
 
 function publishPackage(dir) {
+  if (existsSync(join(dir, '.gitignore')))
+    renameSync(join(dir, '.gitignore'), join(dir, 'gitignore'));
   execSync('npm publish --access public --silent', { cwd: dir, stdio: 'inherit' });
 }
 
