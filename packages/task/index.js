@@ -1,99 +1,90 @@
-import { spawn } from 'node:child_process';
-import { appendFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { AsyncLocalStorage } from 'node:async_hooks';
 
-const als = new AsyncLocalStorage(), log = console.log;
-console.log = (...a) => (als.getStore() || log)(...a);
+export { f };
 
-export function f(name, ...args) {
-  const opts = typeof args.at(-1) === 'object' && !args.at(-1)?.__isTask ? args.pop() : {};
-  const tasks = args;
-  const isLeaf = tasks.length === 1 && typeof tasks[0] === 'function' && !tasks[0].__isTask;
+// -----------------------------------------------------------------------------
+// --- INTERNALS & UTILITIES ---------------------------------------------------
+// -----------------------------------------------------------------------------
 
-  const taskFn = async (indent = '', ctx = {}) => {
-    const printer = ctx.printer || ((msg) => process.stdout.write(msg));
+const writeContext = new AsyncLocalStorage();
+const originalWrite = process.stdout.write.bind(process.stdout);
 
-    if (opts.enabled === false) return;
-    const skip = opts.skip || ctx.forceSkip;
-    if (skip) return printer(`${indent}${name}... SKIP: ${skip}\n`);
+process.stdout.write = function (str) {
+  const buffer = writeContext.getStore();
+  if (buffer) buffer.push(str);
+  else originalWrite(str);
+};
 
-    isLeaf ? printer(`${indent}${name}... `) : printer(`${indent}> ${name}\n`);
-
-    const t0 = performance.now();
-    let broken = 0;
-
-    // Use context logger
-    const logger = (...a) => (broken || (printer('\n'), broken = 1), printer(`${indent}     ${a.join(' ')}\n`));
-
+async function parallelSafe(items, worker) {
+  await Promise.allSettled(items.map(async (item) => {
+    const buffer = [];
     try {
-      const exec = isLeaf
-        ? async () => tasks[0]()
-        : opts.parallel
-          ? async () => {
-            const results = await Promise.allSettled(tasks.map((t) => {
-              const buf = [];
-              // Buffer output for parallel tasks. 
-              // Note: We use a local buffer and flush it atomically to the parent printer.
-              return t(indent + '  ', { printer: (s) => buf.push(s) }).finally(() => printer(buf.join('')));
-            }));
-            const err = results.find((r) => r.status === 'rejected');
-            if (err) throw err.reason;
-          }
-          : async () => {
-            let err;
-            for (const t of tasks) 
-              if (err) await t(indent + '  ', { ...ctx, printer, forceSkip: 'Cascade' });
-              else try { await t(indent + '  ', { ...ctx, printer }); } catch (e) { err = e; }
-            
-            if (err) throw err;
-          };
-
-      const p = als.run(isLeaf ? logger : null, exec);
-
-      opts.timeout
-        ? await Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error(`Timeout ${opts.timeout}ms`)), opts.timeout).unref())])
-        : await p;
-
-      if (isLeaf) printer(`${broken ? indent + '  -> ' : ''}OK (${(performance.now() - t0).toFixed(2)}ms)\n`);
-    } catch (e) {
-      if (!e?.logged) {
-        if (!broken) printer('\n');
-        const [line1, ...rest] = (e.stack || String(e)).split('\n');
-        printer(`${indent}  -> ${line1.toUpperCase()} (${(performance.now() - t0).toFixed(2)}ms)\n`);
-        if (rest.length) printer(`${indent}     ${rest.join('\n' + indent + '     ')}\n`);
-        if (e && typeof e === 'object') e.logged = true;
-      }
-      throw e;
-    }
-
-  };
-
-  taskFn.__isTask = true;
-  return taskFn;
+      await writeContext.run(buffer, () => worker(item));
+    } finally { buffer.forEach(process.stdout.write); }
+  }));
 }
 
-f.$ = (cmd, args, opts = {}) => async () => {
-  const logFile = join(tmpdir(), `spawn-${Date.now()}.txt`);
-  writeFileSync(logFile, '');
-  console.log(`Streamed to ${logFile}`);
+const logContext = new AsyncLocalStorage();
+const originalConsoleLog = console.log;
 
-  await new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd: opts.cwd });
-    let resolved = false, buf = ''; // Optimize: Only buffer if checking waitFor
-    const handler = (d) => {
-      const s = d.toString();
-      appendFileSync(logFile, s);
-      if (opts.waitFor && !resolved) {
-        buf += s;
-        if (opts.waitFor.test(buf)) { resolved = true; buf = ''; resolve(); }
-      }
-    };
-    proc.stdout.on('data', handler);
-    proc.stderr.on('data', handler);
-    proc.on('exit', (code) => {
-      (code === 0 || resolved) ? resolve() : reject(new Error(`Exit ${code}`));
-    });
-  });
+console.log = function (...args) {
+  const store = logContext.getStore();
+  if (store) {
+    if (store.isFirstLog) store.isFirstLog = false;
+    process.stdout.write(`\n${store.indent} ${args.join(' ')}`);
+  } else 
+    originalConsoleLog.apply(console, args);
+  
 };
+
+function f(name, ...args) {
+  const { parallel = false, skip = false, enabled = true } = typeof args.at(-1) === 'object' ? args.pop() : {};
+  const tasks = args;
+  return async function s(ctx = { _error: null, _aborted: false }, options = { indent: '' }) {
+    if (!enabled) return ctx;
+    const startTime = performance.now();
+    const nextIndent = options.indent + '│  ';
+
+    process.stdout.write(`\n${options.indent}${name}... `);
+
+    if (ctx._error || skip) {
+      process.stdout.write(`\n${options.indent}└──> Skip (${(performance.now() - startTime).toFixed(2)}ms)`);
+      return ctx;
+    }
+
+    const { isFirstLog } = await logContext.run({ indent: nextIndent, isFirstLog: tasks.length === 1 }, async () => {
+      const executeTask = async (task) => {
+        let result;
+        try {
+          if (ctx._error && task.name !== 's') result = ctx;
+          else result = await task(ctx, { ...options, indent: nextIndent });
+        } catch (error) { result = { _error: error }; }
+        ctx = { ...ctx, ...result, _error: result?._error || ctx._error, _aborted: result?._aborted || ctx._aborted };
+      };
+
+      if (parallel) await parallelSafe(tasks, executeTask);
+      else for (let task of tasks) await executeTask(task);
+
+      return logContext.getStore();
+    });
+
+    if (ctx._aborted) {
+      process.stdout.write(`\n${options.indent}└──> Aborted (${(performance.now() - startTime).toFixed(2)}ms)`);
+      return ctx;
+    }
+
+    if (ctx._error) {
+      ctx._aborted = true;
+      process.stdout.write(`\n${options.indent}└──> ${ctx._error.stack.split('\n')[0]} (${(performance.now() - startTime).toFixed(2)}ms)`);
+      process.stdout.write(`\n${ctx._error.stack.split('\n').slice(1).map((line) => `${options.indent}     ${line}`).join('\n')}`);
+      return ctx;
+    }
+
+    if (isFirstLog) 
+      process.stdout.write(`Ok (${(performance.now() - startTime).toFixed(2)}ms)`);
+    else 
+      process.stdout.write(`\n${options.indent}└──> Ok (${(performance.now() - startTime).toFixed(2)}ms)`);
+    
+    return ctx;
+  };
+}
